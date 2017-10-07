@@ -18,36 +18,26 @@ namespace ThreadPool
         public ThreadPool(int threadCountStatic)
         {
             properties.threadCountStatic = Math.Abs(threadCountStatic);
-
             SetPoolData(properties.threadCountStatic, properties.threadCountStatic);
-
             for (int i = 0; i < properties.threadCountStatic; i++)
-            {
-                threadList.Add(new Thread(ThreadTaskExecute) { IsBackground = true });
-                events.eventCollection.Add(threadList.ElementAt(i).ManagedThreadId, new ManualResetEvent(false));
-                threadList.ElementAt(i).Start();
-            }
+            { StartNewThread(i); }
         }
 
         public ThreadPool(int minThreadCount, int maxThreadCount)
         {
             properties.minThreadCount = Math.Abs(minThreadCount);
             properties.maxThreadCount = Math.Abs(maxThreadCount);
-
             SetPoolData(properties.minThreadCount, properties.maxThreadCount);
-
             for (int i = 0; i < properties.maxThreadCount; i++)
             {
-                threadList.Add(new Thread(ThreadTaskExecute) { IsBackground = true });
-                events.eventCollection.Add(threadList.ElementAt(i).ManagedThreadId, new ManualResetEvent(false));
                 if (i <= properties.minThreadCount)
                 {
-                    threadList.ElementAt(i).Start();
-                    properties.currentBusyThreads++;
+                    StartNewThread(i);
+                    properties.busyThreads++;
                 }
             }
-            controlThreads.controlThread = new Thread(() => DynamicPool());
-            controlThreads.controlThread.Start();
+            controlThreads.PoolControlThread = new Thread(DynamicPool);
+            controlThreads.PoolControlThread.Start();
         }
 
         private void SetPoolData(int threadCount, int collectionCount)
@@ -74,6 +64,13 @@ namespace ThreadPool
             events.eventCollection = new Dictionary<int, ManualResetEvent>(collectionCount);
         }
 
+        private void StartNewThread(int i)
+        {
+            threadList.Add(new Thread(ThreadTaskExecute) { IsBackground = true });
+            events.eventCollection.Add(threadList.ElementAt(i).ManagedThreadId, new ManualResetEvent(false));
+            threadList.ElementAt(i).Start();
+        }
+
         private void ThreadStart()
         {
             //TODO
@@ -98,7 +95,7 @@ namespace ThreadPool
         {
             if (properties.isBusy)
             {
-                controlThreads.controlThread.Abort();
+                controlThreads.PoolControlThread.Abort();
                 events.syncEvent.Dispose();
                 foreach (Thread t in threadList)
                 {

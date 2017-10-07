@@ -11,8 +11,9 @@ namespace ThreadPool
         private PoolProperties properties;
         private PoolEvents events;
         private PoolControlThreads controlThreads;
+        private object lockConstruct;
 
-        public List<Thread> threadList;
+        private List<Thread> threadList;
         private List<Task> taskQueue = new List<Task>();
 
         public ThreadPool(int threadCountStatic)
@@ -40,8 +41,60 @@ namespace ThreadPool
             controlThreads.PoolControlThread.Start();
         }
 
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        private void Dispose(bool isDisposingNeeded)
+        {
+            if (properties.isBusy)
+            {
+                if (isDisposingNeeded)
+                {
+                    controlThreads.PoolControlThread.Abort();
+                    events.pauseEvent.Dispose();
+                    foreach (Thread t in threadList)
+                    {
+                        t.Abort();
+                        events.eventCollection.ElementAt(t.ManagedThreadId).Value.Dispose();
+                    }
+                }
+                properties.isBusy = false;
+            }
+        }
+
+        public bool Execute(Action action)
+        {
+            lock (lockConstruct)
+            {
+                if (action == null || properties.isPaused) { return false; }
+                AddTask(new Task(action));
+                return true;
+            }
+        }
+
+        public void Stop()
+        {
+            lock (lockConstruct) { properties.isPaused = true; }
+            while (taskQueue.Count > 0)
+            {
+                events.pauseEvent.WaitOne();
+                events.pauseEvent.Reset();
+            }
+            Dispose(true);
+        }
+
+        private void AddTask(Task task)
+        {
+            lock (taskQueue) { taskQueue.Add(task); }
+            events.scheduleEvent.Set();
+        }
+
         private void SetPoolData(int threadCount, int collectionCount)
         {
+            lockConstruct = new object();
             events.pauseEvent = new ManualResetEvent(false);
             SetSchedule();
             SetThreadList(threadCount);
@@ -128,8 +181,7 @@ namespace ThreadPool
 
         private void DeleteTask(Task task)
         {
-            lock (taskQueue)
-            { taskQueue.Remove(task); }
+            lock (taskQueue) { taskQueue.Remove(task); }
             if (taskQueue.Where(t => t.IsWaiting).Count() > 0)
             { events.scheduleEvent.Set(); }
         }
@@ -141,22 +193,7 @@ namespace ThreadPool
 
         ~ThreadPool()
         {
-            Dispose();
-        }
-
-        public void Dispose()
-        {
-            if (properties.isBusy)
-            {
-                controlThreads.PoolControlThread.Abort();
-                events.pauseEvent.Dispose();
-                foreach (Thread t in threadList)
-                {
-                    t.Abort();
-                    events.eventCollection.ElementAt(t.ManagedThreadId).Value.Dispose();
-                }
-                properties.isBusy = false;
-            }
+            Dispose(false);
         }
     }
 }

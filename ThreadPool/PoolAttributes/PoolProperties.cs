@@ -2,11 +2,12 @@
 {
     class PoolProperties
     {
-        public int maxThreadCount;
-        public int minThreadCount;
-        public int threadCountStatic;
+        public int MaxThreadCount { get; set; }
+        public int MinThreadCount { get; set; }
+        public int ThreadCountStatic { get; set; }
         public int busyThreads = 0;
-        public bool isBusy;
-        public bool isPaused;
+        public bool IsBusy { get; set; }
+        public bool IsPaused { get; set; }
+        public object lockConstruct;
     }
 }

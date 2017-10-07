@@ -4,7 +4,7 @@ namespace ThreadPool.PoolAttributes
 {
     class PoolControlThreads
     {
-        public Thread PoolControlThread;
-        public Thread scheduleThread;
+        public Thread PoolControlThread { get; set; }
+        public Thread ScheduleThread { get; set; }
     }
 }

@@ -8,34 +8,29 @@ namespace ThreadPool
 {
     public class ThreadPool : IDisposable
     {
-        private PoolProperties properties;
-        private PoolEvents events;
-        private PoolControlThreads controlThreads;
-        private object lockConstruct;
+        private PoolProperties properties = new PoolProperties();
+        private PoolEvents events = new PoolEvents();
+        private PoolControlThreads controlThreads = new PoolControlThreads();
 
         private List<Thread> threadList;
         private List<Task> taskQueue = new List<Task>();
 
-        public ThreadPool(int threadCountStatic)
+        public ThreadPool(int ThreadCountStatic)
         {
-            properties.threadCountStatic = Math.Abs(threadCountStatic);
-            SetPoolData(properties.threadCountStatic, properties.threadCountStatic);
-            for (int i = 0; i < properties.threadCountStatic; i++)
+            properties.ThreadCountStatic = Math.Abs(ThreadCountStatic);
+            SetPoolData(properties.ThreadCountStatic, properties.ThreadCountStatic);
+            for (int i = 0; i < properties.ThreadCountStatic; i++)
             { StartNewThread(i); }
         }
 
         public ThreadPool(int minThreadCount, int maxThreadCount)
         {
-            properties.minThreadCount = Math.Abs(minThreadCount);
-            properties.maxThreadCount = Math.Abs(maxThreadCount);
-            SetPoolData(properties.minThreadCount, properties.maxThreadCount);
-            for (int i = 0; i < properties.maxThreadCount; i++)
+            SetLimits(minThreadCount, maxThreadCount);
+            SetPoolData(properties.MinThreadCount, properties.MaxThreadCount);
+            for (int i = 0; i < properties.MinThreadCount; i++)
             {
-                if (i <= properties.minThreadCount)
-                {
-                    StartNewThread(i);
-                    properties.busyThreads++;
-                }
+                StartNewThread(i);
+                properties.busyThreads++;
             }
             controlThreads.PoolControlThread = new Thread(DynamicPool);
             controlThreads.PoolControlThread.Start();
@@ -49,7 +44,7 @@ namespace ThreadPool
 
         private void Dispose(bool isDisposingNeeded)
         {
-            if (properties.isBusy)
+            if (properties.IsBusy)
             {
                 if (isDisposingNeeded)
                 {
@@ -61,15 +56,25 @@ namespace ThreadPool
                         events.eventCollection.ElementAt(t.ManagedThreadId).Value.Dispose();
                     }
                 }
-                properties.isBusy = false;
+                properties.IsBusy = false;
             }
+        }
+
+        private void SetLimits(int min, int max)
+        {
+            if (Math.Abs(min) < Math.Abs(max))
+            {
+                properties.MinThreadCount = Math.Abs(min);
+                properties.MaxThreadCount = Math.Abs(max);
+            }
+            else { throw new ArgumentException(); }
         }
 
         public bool Execute(Action action)
         {
-            lock (lockConstruct)
+            lock (properties.lockConstruct)
             {
-                if (action == null || properties.isPaused) { return false; }
+                if (action == null || properties.IsPaused) { return false; }
                 AddTask(new Task(action));
                 return true;
             }
@@ -77,7 +82,7 @@ namespace ThreadPool
 
         public void Stop()
         {
-            lock (lockConstruct) { properties.isPaused = true; }
+            lock (properties.lockConstruct) { properties.IsPaused = true; }
             while (taskQueue.Count > 0)
             {
                 events.pauseEvent.WaitOne();
@@ -94,7 +99,7 @@ namespace ThreadPool
 
         private void SetPoolData(int threadCount, int collectionCount)
         {
-            lockConstruct = new object();
+            properties.lockConstruct = new object();
             events.pauseEvent = new ManualResetEvent(false);
             SetSchedule();
             SetThreadList(threadCount);
@@ -104,8 +109,8 @@ namespace ThreadPool
         private void SetSchedule()
         {
             events.scheduleEvent = new ManualResetEvent(false);
-            controlThreads.scheduleThread = new Thread(ThreadStart) { IsBackground = true };
-            controlThreads.scheduleThread.Start();
+            controlThreads.ScheduleThread = new Thread(ThreadStart) { IsBackground = true };
+            controlThreads.ScheduleThread.Start();
         }
 
         private void SetThreadList(int threadCount)
@@ -139,9 +144,10 @@ namespace ThreadPool
         {
             foreach (Thread thread in threadList)
             {
-                if (events.eventCollection.ElementAt(thread.ManagedThreadId).Value.WaitOne(0) == false)
+                ManualResetEvent currentEvent = events.eventCollection.ElementAt(thread.ManagedThreadId).Value;
+                if (currentEvent.WaitOne(0) == false)
                 {
-                    events.eventCollection.ElementAt(thread.ManagedThreadId).Value.Set();
+                    currentEvent.Set();
                     return;
                 }
             }
@@ -159,9 +165,8 @@ namespace ThreadPool
 
         private void ExecuteTask(Task task)
         {
-            try { task.Execute(); } catch { }
-            DeleteTask(task);
-            if (properties.isPaused) { events.pauseEvent.Set(); }
+            try { task.Execute(); } finally { DeleteTask(task); }
+            if (properties.IsPaused) { events.pauseEvent.Set(); }
             events.eventCollection.ElementAt(Thread.CurrentThread.ManagedThreadId).Value.Reset();
         }
 
@@ -188,7 +193,36 @@ namespace ThreadPool
 
         private void DynamicPool()
         {
-            //TODO
+            int interval = properties.MaxThreadCount - properties.MinThreadCount;
+            IEnumerable<Task> notDoneTasks = taskQueue.Where(t => t.IsWaiting);
+            int threadsAdded = 0;
+            while (true)
+            {
+                notDoneTasks = taskQueue.Where(t => t.IsWaiting);
+                if (notDoneTasks.Count() != 0) { threadsAdded = IncreaseThreadAmount(threadsAdded, notDoneTasks); }
+                if (properties.busyThreads < notDoneTasks.Count()) { threadsAdded = ReduceThreadAmount(threadsAdded); }
+            }
+        }
+
+        private int IncreaseThreadAmount(int added, IEnumerable<Task> notDone)
+        {
+            while (added != notDone.Count() && added != properties.MaxThreadCount)
+            {
+                threadList.ElementAt(properties.busyThreads).Start();
+                properties.busyThreads++;
+                added++;
+            }
+            return added;
+        }
+
+        private int ReduceThreadAmount(int added)
+        {
+            while (added != properties.MinThreadCount)
+            {
+                threadList.ElementAt(properties.busyThreads--).Abort();
+                added--;
+            }
+            return added;
         }
 
         ~ThreadPool()

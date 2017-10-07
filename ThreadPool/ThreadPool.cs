@@ -13,7 +13,7 @@ namespace ThreadPool
         private PoolControlThreads controlThreads;
 
         public List<Thread> threadList;
-        private Queue<Task> taskQueue = new Queue<Task>();
+        private List<Task> taskQueue = new List<Task>();
 
         public ThreadPool(int threadCountStatic)
         {
@@ -42,6 +42,7 @@ namespace ThreadPool
 
         private void SetPoolData(int threadCount, int collectionCount)
         {
+            events.pauseEvent = new ManualResetEvent(false);
             SetSchedule();
             SetThreadList(threadCount);
             SetEventCollection(threadCount);
@@ -73,12 +74,64 @@ namespace ThreadPool
 
         private void ThreadStart()
         {
-            //TODO
+            while (true)
+            {
+                events.scheduleEvent.WaitOne();
+                lock (threadList) { FindFreeThread(); }
+                events.scheduleEvent.Reset();
+            }
+        }
+
+        private void FindFreeThread()
+        {
+            foreach (Thread thread in threadList)
+            {
+                if (events.eventCollection.ElementAt(thread.ManagedThreadId).Value.WaitOne(0) == false)
+                {
+                    events.eventCollection.ElementAt(thread.ManagedThreadId).Value.Set();
+                    return;
+                }
+            }
         }
 
         private void ThreadTaskExecute()
         {
-            //TODO
+            while (true)
+            {
+                events.eventCollection.ElementAt(Thread.CurrentThread.ManagedThreadId).Value.WaitOne();
+                Task task = GetTask();
+                if (task != null) { ExecuteTask(task); }
+            }
+        }
+
+        private void ExecuteTask(Task task)
+        {
+            try { task.Execute(); } catch { }
+            DeleteTask(task);
+            if (properties.isPaused) { events.pauseEvent.Set(); }
+            events.eventCollection.ElementAt(Thread.CurrentThread.ManagedThreadId).Value.Reset();
+        }
+
+        private Task GetTask()
+        {
+            lock (taskQueue)
+            {
+                try
+                {
+                    IEnumerable<Task> notDone = taskQueue.Where(t => t.IsWaiting);
+                    if (notDone.Count() > 0) { return notDone.First(); }
+                }
+                catch { }
+                return null;
+            }
+        }
+
+        private void DeleteTask(Task task)
+        {
+            lock (taskQueue)
+            { taskQueue.Remove(task); }
+            if (taskQueue.Where(t => t.IsWaiting).Count() > 0)
+            { events.scheduleEvent.Set(); }
         }
 
         private void DynamicPool()
@@ -96,7 +149,7 @@ namespace ThreadPool
             if (properties.isBusy)
             {
                 controlThreads.PoolControlThread.Abort();
-                events.syncEvent.Dispose();
+                events.pauseEvent.Dispose();
                 foreach (Thread t in threadList)
                 {
                     t.Abort();

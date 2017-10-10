@@ -6,7 +6,7 @@ using ThreadPool.PoolAttributes;
 
 namespace ThreadPool
 {
-    public class ThreadPool : IDisposable
+    public class Pool : IDisposable
     {
         private PoolProperties properties = new PoolProperties();
         private PoolEvents events = new PoolEvents();
@@ -15,7 +15,7 @@ namespace ThreadPool
         private List<Thread> threadList;
         private List<Task> taskQueue = new List<Task>();
 
-        public ThreadPool(int ThreadCountStatic)
+        public Pool(int ThreadCountStatic)
         {
             properties.ThreadCountStatic = Math.Abs(ThreadCountStatic);
             SetPoolData(properties.ThreadCountStatic, properties.ThreadCountStatic);
@@ -23,7 +23,7 @@ namespace ThreadPool
             { StartNewThread(i); }
         }
 
-        public ThreadPool(int minThreadCount, int maxThreadCount)
+        public Pool(int minThreadCount, int maxThreadCount)
         {
             SetLimits(minThreadCount, maxThreadCount);
             SetPoolData(properties.MinThreadCount, properties.MaxThreadCount);
@@ -34,6 +34,27 @@ namespace ThreadPool
             }
             controlThreads.PoolControlThread = new Thread(DynamicPool);
             controlThreads.PoolControlThread.Start();
+        }
+
+        public bool Execute(Action action)
+        {
+            lock (properties.lockConstruct)
+            {
+                if (action == null || properties.IsPaused) { return false; }
+                AddTask(new Task(action));
+                return true;
+            }
+        }
+
+        public void Stop()
+        {
+            lock (properties.lockConstruct) { properties.IsPaused = true; }
+            while (taskQueue.Count > 0)
+            {
+                events.pauseEvent.WaitOne();
+                events.pauseEvent.Reset();
+            }
+            Dispose(true);
         }
 
         public void Dispose()
@@ -68,27 +89,6 @@ namespace ThreadPool
                 properties.MaxThreadCount = Math.Abs(max);
             }
             else { throw new ArgumentException(); }
-        }
-
-        public bool Execute(Action action)
-        {
-            lock (properties.lockConstruct)
-            {
-                if (action == null || properties.IsPaused) { return false; }
-                AddTask(new Task(action));
-                return true;
-            }
-        }
-
-        public void Stop()
-        {
-            lock (properties.lockConstruct) { properties.IsPaused = true; }
-            while (taskQueue.Count > 0)
-            {
-                events.pauseEvent.WaitOne();
-                events.pauseEvent.Reset();
-            }
-            Dispose(true);
         }
 
         private void AddTask(Task task)
@@ -225,7 +225,7 @@ namespace ThreadPool
             return added;
         }
 
-        ~ThreadPool()
+        ~Pool()
         {
             Dispose(false);
         }

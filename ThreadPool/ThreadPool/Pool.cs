@@ -16,6 +16,8 @@ namespace ThreadPool
         private List<Task> taskQueue = new List<Task>();
         private dynamic result;
 
+        private Timer timer;
+
         public Pool(int ThreadCountStatic)
         {
             properties.ThreadCountStatic = ThreadCountStatic;
@@ -33,8 +35,14 @@ namespace ThreadPool
                 StartNewThread(i);
                 properties.busyThreads++;
             }
+            timer = new Timer(CallReducer, null, 0, 100);
             controlThreads.PoolControlThread = new Thread(DynamicPool);
             controlThreads.PoolControlThread.Start();
+        }
+
+        private void CallReducer(object state)
+        {
+            DynamicPool();
         }
 
         public dynamic Execute(Func<dynamic> action)
@@ -194,36 +202,27 @@ namespace ThreadPool
 
         private void DynamicPool()
         {
-            int interval = properties.MaxThreadCount - properties.MinThreadCount;
             IEnumerable<Task> notDoneTasks = taskQueue.Where(t => t.IsWaiting);
-            int threadsAdded = 0;
-            while (true)
-            {
-                notDoneTasks = taskQueue.Where(t => t.IsWaiting);
-                if (notDoneTasks.Count() != 0) { threadsAdded = IncreaseThreadAmount(threadsAdded, notDoneTasks); }
-                if (properties.busyThreads < notDoneTasks.Count()) { threadsAdded = ReduceThreadAmount(threadsAdded); }
-            }
+            if (properties.busyThreads < notDoneTasks.Count()) { IncreaseThreadAmount(notDoneTasks); }
+            if (properties.busyThreads > notDoneTasks.Count()) { ReduceThreadAmount(); }
         }
 
-        private int IncreaseThreadAmount(int added, IEnumerable<Task> notDone)
+        private void IncreaseThreadAmount(IEnumerable<Task> notDone)
         {
-            while (added != notDone.Count() && added != properties.MaxThreadCount)
+            while (properties.busyThreads != notDone.Count() && properties.busyThreads != properties.MaxThreadCount)
             {
                 threadList.ElementAt(properties.busyThreads).Start();
                 properties.busyThreads++;
-                added++;
             }
-            return added;
         }
 
-        private int ReduceThreadAmount(int added)
+        private void ReduceThreadAmount()
         {
-            while (added != properties.MinThreadCount)
+            while (properties.busyThreads > properties.MinThreadCount)
             {
                 threadList.ElementAt(properties.busyThreads--).Abort();
-                added--;
+                properties.busyThreads--;
             }
-            return added;
         }
 
         ~Pool()

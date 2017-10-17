@@ -74,9 +74,7 @@ namespace Test
             foreach (DirectoryInfo dir in currentDir.GetDirectories())
             { CopyItemsInDir(pool, dir.FullName, Path.Combine(to, dir.Name)); }
             foreach (string file in Directory.GetFiles(from))
-            {
                 pool.Execute(() => CopyFile(file, from, to));
-            }
         }
 
         private static bool CopyFile(string file, string from, string to)

@@ -5,19 +5,19 @@ namespace ThreadPool
     class Task
     {
         public bool IsWaiting { get; private set; } = true;
-        private Action Act { get; set; }
+        private Func<dynamic> Act { get; set; }
 
-        public Task(Action act)
+        public Task(Func<dynamic> act)
         {
             Act = act;
         }
 
-        public void Execute()
+        public dynamic Execute()
         {
             lock (this)
             {
                 IsWaiting = false;
-                Act();
+                return Act();
             }
         }
     }

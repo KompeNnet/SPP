@@ -14,10 +14,11 @@ namespace ThreadPool
 
         private List<Thread> threadList;
         private List<Task> taskQueue = new List<Task>();
+        private dynamic result;
 
         public Pool(int ThreadCountStatic)
         {
-            properties.ThreadCountStatic = Math.Abs(ThreadCountStatic);
+            properties.ThreadCountStatic = ThreadCountStatic;
             SetPoolData(properties.ThreadCountStatic, properties.ThreadCountStatic);
             for (int i = 0; i < properties.ThreadCountStatic; i++)
             { StartNewThread(i); }
@@ -36,13 +37,13 @@ namespace ThreadPool
             controlThreads.PoolControlThread.Start();
         }
 
-        public bool Execute(Action action)
+        public dynamic Execute(Func<dynamic> action)
         {
             lock (properties.lockConstruct)
             {
                 if (action == null || properties.IsPaused) { return false; }
                 AddTask(new Task(action));
-                return true;
+                return result;
             }
         }
 
@@ -165,7 +166,7 @@ namespace ThreadPool
 
         private void ExecuteTask(Task task)
         {
-            try { task.Execute(); } finally { DeleteTask(task); }
+            try { result = task.Execute(); } finally { DeleteTask(task); }
             if (properties.IsPaused) { events.pauseEvent.Set(); }
             events.eventCollection.ElementAt(Thread.CurrentThread.ManagedThreadId).Value.Reset();
         }

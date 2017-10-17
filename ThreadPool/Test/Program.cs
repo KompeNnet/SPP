@@ -75,9 +75,14 @@ namespace Test
             { CopyItemsInDir(pool, dir.FullName, Path.Combine(to, dir.Name)); }
             foreach (string file in Directory.GetFiles(from))
             {
-                string fileName = Path.GetFileName(file);
-                pool.Execute(() => File.Copy(file, Path.Combine(to, fileName)));
+                pool.Execute(() => CopyFile(file, from, to));
             }
+        }
+
+        private static bool CopyFile(string file, string from, string to)
+        {
+            try { File.Copy(file, Path.Combine(to, Path.GetFileName(file))); return true; }
+            catch { return false; }
         }
 
         static void CopyItemsInDir(Pool pool, string fullName, string path)

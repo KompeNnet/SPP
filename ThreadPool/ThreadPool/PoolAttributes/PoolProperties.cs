@@ -2,7 +2,7 @@
 {
     class PoolProperties
     {
-        public int MaxThreadCount { get; set; }
+        public int MaxThreadCount { get; set; } = 0;
         public int MinThreadCount { get; set; }
         public int ThreadCountStatic { get; set; }
         public int busyThreads = 0;

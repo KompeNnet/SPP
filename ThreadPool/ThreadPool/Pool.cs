@@ -35,7 +35,6 @@ namespace ThreadPool
                 StartNewThread(i);
                 properties.busyThreads++;
             }
-            timer = new Timer(CallReducer, null, 0, 100);
             controlThreads.PoolControlThread = new Thread(DynamicPool);
             controlThreads.PoolControlThread.Start();
         }
@@ -68,6 +67,8 @@ namespace ThreadPool
 
         public void Dispose()
         {
+            if (properties.MaxThreadCount == 0)
+                timer.Dispose();
             Dispose(true);
             GC.SuppressFinalize(this);
         }
@@ -202,6 +203,11 @@ namespace ThreadPool
 
         private void DynamicPool()
         {
+            timer = new Timer(CallReducer, null, 0, 100);
+        }
+
+        private void TimerCallBack()
+        {
             IEnumerable<Task> notDoneTasks = taskQueue.Where(t => t.IsWaiting);
             if (properties.busyThreads < notDoneTasks.Count()) { IncreaseThreadAmount(notDoneTasks); }
             if (properties.busyThreads > notDoneTasks.Count()) { ReduceThreadAmount(); }
@@ -218,7 +224,7 @@ namespace ThreadPool
 
         private void ReduceThreadAmount()
         {
-            while (properties.busyThreads > properties.MinThreadCount)
+            while (properties.busyThreads > properties.MinThreadCount && properties.busyThreads < taskQueue.Where(t => t.IsWaiting).Count())
             {
                 threadList.ElementAt(properties.busyThreads--).Abort();
                 properties.busyThreads--;

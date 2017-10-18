@@ -2,17 +2,17 @@
 
 namespace ThreadPool
 {
-    class Task
+    class Task<T>
     {
         public bool IsWaiting { get; private set; } = true;
-        private Func<dynamic> Act { get; set; }
+        private Func<T> Act { get; set; }
 
-        public Task(Func<dynamic> act)
+        public Task(Func<T> act)
         {
             Act = act;
         }
 
-        public dynamic Execute()
+        public T Execute()
         {
             lock (this)
             {

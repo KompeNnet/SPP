@@ -6,15 +6,15 @@ using ThreadPool.PoolAttributes;
 
 namespace ThreadPool
 {
-    public class Pool : IDisposable
+    public class Pool<T> : IDisposable
     {
         private PoolProperties properties = new PoolProperties();
         private PoolEvents events = new PoolEvents();
         private PoolControlThreads controlThreads = new PoolControlThreads();
 
         private List<Thread> threadList;
-        private List<Task> taskQueue = new List<Task>();
-        private dynamic result;
+        private List<Task<T>> taskQueue = new List<Task<T>>();
+        private T result;
 
         private Timer timer;
 
@@ -44,12 +44,12 @@ namespace ThreadPool
             DynamicPool();
         }
 
-        public dynamic Execute(Func<dynamic> action)
+        public T Execute(Func<T> action)
         {
             lock (properties.lockConstruct)
             {
-                if (action == null || properties.IsPaused) { return false; }
-                AddTask(new Task(action));
+                if (action == null || properties.IsPaused) { return default(T); }
+                AddTask(new Task<T>(action));
                 return result;
             }
         }
@@ -101,7 +101,7 @@ namespace ThreadPool
             else { throw new ArgumentException(); }
         }
 
-        private void AddTask(Task task)
+        private void AddTask(Task<T> task)
         {
             lock (taskQueue) { taskQueue.Add(task); }
             events.scheduleEvent.Set();
@@ -168,25 +168,25 @@ namespace ThreadPool
             while (true)
             {
                 events.eventCollection.ElementAt(Thread.CurrentThread.ManagedThreadId).Value.WaitOne();
-                Task task = GetTask();
+                Task<T> task = GetTask();
                 if (task != null) { ExecuteTask(task); }
             }
         }
 
-        private void ExecuteTask(Task task)
+        private void ExecuteTask(Task<T> task)
         {
             try { result = task.Execute(); } finally { DeleteTask(task); }
             if (properties.IsPaused) { events.pauseEvent.Set(); }
             events.eventCollection.ElementAt(Thread.CurrentThread.ManagedThreadId).Value.Reset();
         }
 
-        private Task GetTask()
+        private Task<T> GetTask()
         {
             lock (taskQueue)
             {
                 try
                 {
-                    IEnumerable<Task> notDone = taskQueue.Where(t => t.IsWaiting);
+                    IEnumerable<Task<T>> notDone = taskQueue.Where(t => t.IsWaiting);
                     if (notDone.Count() > 0) { return notDone.First(); }
                 }
                 catch { }
@@ -194,7 +194,7 @@ namespace ThreadPool
             }
         }
 
-        private void DeleteTask(Task task)
+        private void DeleteTask(Task<T> task)
         {
             lock (taskQueue) { taskQueue.Remove(task); }
             if (taskQueue.Where(t => t.IsWaiting).Count() > 0)
@@ -208,12 +208,12 @@ namespace ThreadPool
 
         private void TimerCallBack()
         {
-            IEnumerable<Task> notDoneTasks = taskQueue.Where(t => t.IsWaiting);
+            IEnumerable<Task<T>> notDoneTasks = taskQueue.Where(t => t.IsWaiting);
             if (properties.busyThreads < notDoneTasks.Count()) { IncreaseThreadAmount(notDoneTasks); }
             if (properties.busyThreads > notDoneTasks.Count()) { ReduceThreadAmount(); }
         }
 
-        private void IncreaseThreadAmount(IEnumerable<Task> notDone)
+        private void IncreaseThreadAmount(IEnumerable<Task<T>> notDone)
         {
             while (properties.busyThreads != notDone.Count() && properties.busyThreads != properties.MaxThreadCount)
             {

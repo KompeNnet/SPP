@@ -13,8 +13,7 @@ namespace ThreadPool
         private PoolControlThreads controlThreads = new PoolControlThreads();
 
         private List<Thread> threadList;
-        private List<Task<T>> taskQueue = new List<Task<T>>();
-        private T result;
+        private Queue<Task<T>> taskQueue = new Queue<Task<T>>();
 
         private Timer timer;
 
@@ -39,18 +38,11 @@ namespace ThreadPool
             controlThreads.PoolControlThread.Start();
         }
 
-        private void CallReducer(object state)
-        {
-            DynamicPool();
-        }
-
-        public T Execute(Func<T> action)
+        public void Execute(Task<T> task)
         {
             lock (properties.lockConstruct)
             {
-                if (action == null || properties.IsPaused) { return default(T); }
-                AddTask(new Task<T>(action));
-                return result;
+                if (task != null && !properties.IsPaused) AddTask(task);
             }
         }
 
@@ -103,7 +95,7 @@ namespace ThreadPool
 
         private void AddTask(Task<T> task)
         {
-            lock (taskQueue) { taskQueue.Add(task); }
+            lock (taskQueue) { taskQueue.Enqueue(task); }
             events.scheduleEvent.Set();
         }
 
@@ -175,7 +167,7 @@ namespace ThreadPool
 
         private void ExecuteTask(Task<T> task)
         {
-            try { result = task.Execute(); } finally { DeleteTask(task); }
+            try { task.Execute(); } catch { }
             if (properties.IsPaused) { events.pauseEvent.Set(); }
             events.eventCollection.ElementAt(Thread.CurrentThread.ManagedThreadId).Value.Reset();
         }
@@ -186,36 +178,31 @@ namespace ThreadPool
             {
                 try
                 {
-                    IEnumerable<Task<T>> notDone = taskQueue.Where(t => t.IsWaiting);
-                    if (notDone.Count() > 0) { return notDone.First(); }
+                    if (taskQueue.Count > 0)
+                    {
+                        if (taskQueue.Count > 1) events.scheduleEvent.Set();
+                        return taskQueue.Dequeue();
+                    }
                 }
                 catch { }
                 return null;
             }
         }
 
-        private void DeleteTask(Task<T> task)
-        {
-            lock (taskQueue) { taskQueue.Remove(task); }
-            if (taskQueue.Where(t => t.IsWaiting).Count() > 0)
-            { events.scheduleEvent.Set(); }
-        }
-
         private void DynamicPool()
         {
-            timer = new Timer(CallReducer, null, 0, 100);
+            timer = new Timer(TimerCallBack, null, 0, 100);
         }
 
-        private void TimerCallBack()
+        private void TimerCallBack(object state)
         {
-            IEnumerable<Task<T>> notDoneTasks = taskQueue.Where(t => t.IsWaiting);
-            if (properties.busyThreads < notDoneTasks.Count()) { IncreaseThreadAmount(notDoneTasks); }
-            if (properties.busyThreads > notDoneTasks.Count()) { ReduceThreadAmount(); }
+            if (properties.busyThreads < taskQueue.Count()) { IncreaseThreadAmount(); }
+            if (properties.busyThreads > taskQueue.Count()) { ReduceThreadAmount(); }
         }
 
-        private void IncreaseThreadAmount(IEnumerable<Task<T>> notDone)
+        private void IncreaseThreadAmount()
         {
-            while (properties.busyThreads != notDone.Count() && properties.busyThreads != properties.MaxThreadCount)
+            while (properties.busyThreads != taskQueue.Count() && properties.busyThreads < properties.MaxThreadCount)
             {
                 threadList.ElementAt(properties.busyThreads).Start();
                 properties.busyThreads++;
@@ -224,7 +211,7 @@ namespace ThreadPool
 
         private void ReduceThreadAmount()
         {
-            while (properties.busyThreads > properties.MinThreadCount && properties.busyThreads < taskQueue.Where(t => t.IsWaiting).Count())
+            while (properties.busyThreads > properties.MinThreadCount && properties.busyThreads < taskQueue.Count())
             {
                 threadList.ElementAt(properties.busyThreads--).Abort();
                 properties.busyThreads--;

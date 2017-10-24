@@ -50,17 +50,17 @@ namespace Test
 
         static void StaticPool(string[] args)
         {
-            Pool staticPool = new Pool(Math.Abs(int.Parse(args[2])));
+            Pool<bool> staticPool = new Pool<bool>(Math.Abs(int.Parse(args[2])));
             MakePoolWork(staticPool, args[0], args[1]);
         }
 
         static void DynamicPool(string[] args)
         {
-            Pool dynamicPool = new Pool(Math.Abs(int.Parse(args[2])), Math.Abs(int.Parse(args[3])));
+            Pool<bool> dynamicPool = new Pool<bool>(Math.Abs(int.Parse(args[2])), Math.Abs(int.Parse(args[3])));
             MakePoolWork(dynamicPool, args[0], args[1]);
         }
 
-        static void MakePoolWork(Pool pool, string from, string to)
+        static void MakePoolWork(Pool<bool> pool, string from, string to)
         {
             Console.WriteLine("Task started");
             CopyDirectory(pool, from, to);
@@ -68,13 +68,17 @@ namespace Test
             Console.WriteLine("Completed");
         }
 
-        static void CopyDirectory(Pool pool, string from, string to)
+        static void CopyDirectory(Pool<bool> pool, string from, string to)
         {
             DirectoryInfo currentDir = new DirectoryInfo(from);
             foreach (DirectoryInfo dir in currentDir.GetDirectories())
             { CopyItemsInDir(pool, dir.FullName, Path.Combine(to, dir.Name)); }
             foreach (string file in Directory.GetFiles(from))
-                pool.Execute(() => CopyFile(file, from, to));
+            {
+                Task<bool> task = new Task<bool>(() => CopyFile(file, from, to));
+                pool.Execute(task);
+                if (!task.Get()) return;
+            }
         }
 
         private static bool CopyFile(string file, string from, string to)
@@ -83,7 +87,7 @@ namespace Test
             catch { return false; }
         }
 
-        static void CopyItemsInDir(Pool pool, string fullName, string path)
+        static void CopyItemsInDir(Pool<bool> pool, string fullName, string path)
         {
             if (!Directory.Exists(path))
             { Directory.CreateDirectory(path); }

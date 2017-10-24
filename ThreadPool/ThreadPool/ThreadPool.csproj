@@ -40,6 +40,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="IFuture.cs" />
     <Compile Include="PoolAttributes\PoolControlThreads.cs" />
     <Compile Include="PoolAttributes\PoolEvents.cs" />
     <Compile Include="PoolAttributes\PoolProperties.cs" />

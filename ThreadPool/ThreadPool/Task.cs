@@ -2,23 +2,35 @@
 
 namespace ThreadPool
 {
-    class Task<T>
+    public class Task<T> : IFuture<T>
     {
-        public bool IsWaiting { get; private set; } = true;
         private Func<T> Act { get; set; }
+        private bool Done { get; set; } = false;
+        private T Result { get; set; }
 
         public Task(Func<T> act)
         {
             Act = act;
         }
 
-        public T Execute()
+        internal void Execute()
         {
             lock (this)
             {
-                IsWaiting = false;
-                return Act();
+                Result = Act();
+                Done = true;
             }
+        }
+
+        public T Get()
+        {
+            if (Done) return Result;
+            return default(T);
+        }
+
+        public bool IsDone()
+        {
+            return Done;
         }
     }
 }

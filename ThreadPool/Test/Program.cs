@@ -1,13 +1,17 @@
 ﻿using System;
 using System.IO;
-using ThreadPool;
+using ThreadPool.Impl;
 
-namespace Test
+namespace ThreadPool
 {
     class Program
     {
         static void Main(string[] args)
         {
+            args = new string[3];
+            args[0] = "C:\\Users\\kompe\\Downloads\\New folder";
+            args[1] = "C:\\Users\\kompe\\Downloads\\New folder (2)";
+            args[2] = "2";
             if (!CheckArgs(args)) return;
             switch (args.Length)
             {
@@ -20,10 +24,9 @@ namespace Test
         {
             int i = new int();
             if (args.Length != 3 && args.Length != 4) return PrintFinalError("Incorrect number of arguments.");
-            if (!int.TryParse(args[2], out i) || !(args.Length == 4 && int.TryParse(args[3], out i)))
-            { return PrintFinalError("Please, check nums correctness."); }
-            if (!CheckDirectories(args[0], args[1]))
-            { return PrintFinalError("Please, check directories correctness."); }
+            if (!int.TryParse(args[2], out i)) return PrintFinalError("Please, check nums correctness.");
+            if (args.Length == 4) if (!int.TryParse(args[3], out i)) return PrintFinalError("Please, check nums correctness.");
+            if (!CheckDirectories(args[0], args[1])) return PrintFinalError("Please, check directories correctness.");
             return true;
         }
 
@@ -64,7 +67,7 @@ namespace Test
         {
             Console.WriteLine("Task started");
             CopyDirectory(pool, from, to);
-            pool.Stop();
+            pool.Dispose();
             Console.WriteLine("Completed");
         }
 
@@ -77,7 +80,6 @@ namespace Test
             {
                 Task<bool> task = new Task<bool>(() => CopyFile(file, from, to));
                 pool.Execute(task);
-                if (!task.Get()) return;
             }
         }
 

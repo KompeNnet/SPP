@@ -1,6 +1,6 @@
 ﻿namespace ThreadPool
 {
-    interface IFuture<T>
+    public interface IFuture<T>
     {
         T Get();
         bool IsDone();

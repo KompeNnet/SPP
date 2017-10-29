@@ -40,12 +40,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Attributes\Properties.cs" />
     <Compile Include="IFuture.cs" />
-    <Compile Include="PoolAttributes\PoolControlThreads.cs" />
-    <Compile Include="PoolAttributes\PoolEvents.cs" />
-    <Compile Include="PoolAttributes\PoolProperties.cs" />
-    <Compile Include="Task.cs" />
-    <Compile Include="Pool.cs" />
+    <Compile Include="Impl\Pool.cs" />
+    <Compile Include="Impl\Result.cs" />
+    <Compile Include="Impl\Task.cs" />
+    <Compile Include="IPool.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup />

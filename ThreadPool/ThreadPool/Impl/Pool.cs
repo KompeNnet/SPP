@@ -50,7 +50,9 @@ namespace ThreadPool.Impl
                     taskQueue.Enqueue(task);
                     newTaskEvent.Set();
                 }
-                lock (resultList) { resultList.Add(new Result<T>(task.Id)); }
+                Result<T> result = new Result<T>(task.Id);
+                lock (resultList) { resultList.Add(result); }
+                return result;
             }
             return null;
         }
@@ -75,9 +77,6 @@ namespace ThreadPool.Impl
         {
             while (true)
             {
-                timers[Thread.CurrentThread.ManagedThreadId] = new Timer(TimerCallback, null, 0, 100);
-                newTaskEvent.WaitOne();
-                timers[Thread.CurrentThread.ManagedThreadId].Dispose();
                 Task<T> task = GetTask();
                 if (task != null)
                 {
@@ -88,6 +87,12 @@ namespace ThreadPool.Impl
                         resultList.Remove(result);
                     }
                     result.SetResult(task.Execute());
+                }
+                else
+                {
+                    timers[Thread.CurrentThread.ManagedThreadId] = new Timer(TimerCallback, null, 0, 100);
+                    newTaskEvent.WaitOne();
+                    timers[Thread.CurrentThread.ManagedThreadId].Dispose();
                 }
             }
         }
@@ -109,7 +114,7 @@ namespace ThreadPool.Impl
                     timers[Thread.CurrentThread.ManagedThreadId].Dispose();
                     timers.Remove(Thread.CurrentThread.ManagedThreadId);
                     properties.ThreadCount--;
-                    threadList.Remove(Thread.CurrentThread);
+                    lock (threadList) { threadList.Remove(Thread.CurrentThread); }
                     Thread.CurrentThread.Abort();
                 }
             }
@@ -117,17 +122,20 @@ namespace ThreadPool.Impl
 
         private void ControlThreadWorker()
         {
-            if (taskQueue.Count > 0 && properties.ThreadCount < properties.MaxThreads)
+            while (true)
             {
-                AddNewThread();
-                properties.ThreadCount++;
+                if (taskQueue.Count > 0 && properties.ThreadCount < properties.MaxThreads)
+                {
+                    AddNewThread();
+                    lock (properties) { properties.ThreadCount++; }                    
+                }
             }
         }
 
         private Thread AddNewThread()
         {
             Thread thread = new Thread(ThreadWorker) { IsBackground = true };
-            threadList.Add(thread);
+            lock (threadList) { threadList.Add(thread); }            
             thread.Start();
             return thread;
         }

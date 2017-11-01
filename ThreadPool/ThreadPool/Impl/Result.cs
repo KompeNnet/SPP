@@ -19,6 +19,7 @@ namespace ThreadPool.Impl
         internal void SetResult(T result)
         {
             this.result = result;
+            done = true;
             doneEvent.Set();
         }
 
